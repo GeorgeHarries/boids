@@ -12,3 +12,4 @@ opt-level = 3
 [dependencies]
 bevy = "0.10.0"
 bevy-inspector-egui = "0.18.0"
+bevy_fly_camera = "0.10.0"
