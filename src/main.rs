@@ -16,6 +16,7 @@ pub const BOIDS_NUM: i32 = 200;
 pub const BOID_COLOUR: Color = Color::WHITE;
 pub const BOID_SPEED: f32 = 5.0;
 pub const BOID_ACCELERATION_RATE: f32 = 3.0;
+pub const BOID_SOFT_BOUND_ACCELERATION_RATE: f32 = 3.0;
 pub const BOID_VISION_RANGE: f32 = 4.0;
 pub const BOID_PERSONAL_SPACE: f32 = 0.5;
 
@@ -66,10 +67,13 @@ fn main() {
     .add_startup_system(spawn_camera)
     .add_startup_system(set_light_level)
     .add_startup_system(spawn_boid)
-    .add_system(boids_move)
-    .add_system(boids_edge_reflect)
-    .add_system(boids_calculate_acceleration)
-    .add_system(boids_accelerate)
+    .add_systems((
+        boids_calculate_acceleration,
+        boids_edge_soft_bound,
+        boids_accelerate,
+        boids_move
+    ).chain())
+    // .add_system(boids_edge_reflect)
     .run();
 }
 
@@ -207,15 +211,29 @@ fn boids_move(
 }
 
 fn boids_edge_reflect(
-    mut boids: Query<(&Boid, &mut Transform)>,
+    mut boids: Query<&mut Transform, With<Boid>>,
 ) {
-    for (_, mut transform) in boids.iter_mut() {
+    for mut transform in boids.iter_mut() {
         if transform.translation.x >=  0.5*BOUNDS_WIDTH_X {transform.translation.x -= BOUNDS_WIDTH_X}
         if transform.translation.x <= -0.5*BOUNDS_WIDTH_X {transform.translation.x += BOUNDS_WIDTH_X}
         if transform.translation.y >=  0.5*BOUNDS_WIDTH_Y {transform.translation.y -= BOUNDS_WIDTH_Y}
         if transform.translation.y <= -0.5*BOUNDS_WIDTH_Y {transform.translation.y += BOUNDS_WIDTH_Y}
         if transform.translation.z >=  0.5*BOUNDS_WIDTH_Z {transform.translation.z -= BOUNDS_WIDTH_Z}
         if transform.translation.z <= -0.5*BOUNDS_WIDTH_Z {transform.translation.z += BOUNDS_WIDTH_Z}
+    }
+}
+
+fn boids_edge_soft_bound(
+    mut boids: Query<(&Transform, &mut Acceleration), With<Boid>>,
+) {
+    for (transform, mut acceleration) in boids.iter_mut() {
+        if transform.translation.x >=  0.5*BOUNDS_WIDTH_X {acceleration.direction.x -= BOID_SOFT_BOUND_ACCELERATION_RATE}
+        if transform.translation.x <= -0.5*BOUNDS_WIDTH_X {acceleration.direction.x += BOID_SOFT_BOUND_ACCELERATION_RATE}
+        if transform.translation.y >=  0.5*BOUNDS_WIDTH_Y {acceleration.direction.y -= BOID_SOFT_BOUND_ACCELERATION_RATE}
+        if transform.translation.y <= -0.5*BOUNDS_WIDTH_Y {acceleration.direction.y += BOID_SOFT_BOUND_ACCELERATION_RATE}
+        if transform.translation.z >=  0.5*BOUNDS_WIDTH_Z {acceleration.direction.z -= BOID_SOFT_BOUND_ACCELERATION_RATE}
+        if transform.translation.z <= -0.5*BOUNDS_WIDTH_Z {acceleration.direction.z += BOID_SOFT_BOUND_ACCELERATION_RATE}
+        acceleration.direction = acceleration.direction.normalize_or_zero();
     }
 }
 ////////////////////////////////////////////////////////////////
