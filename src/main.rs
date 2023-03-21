@@ -11,22 +11,37 @@ pub const WINDOW_WIDTH: f32 = WINDOW_HEIGHT*ASPECT_RATIO;
 
 pub const SKY_COLOUR: Color = Color::rgb(0.2, 0.2, 0.2);
 
-pub const BOIDS_NUM: i32 = 5000;
+pub const BOIDS_NUM: i32 = 1000;
 
 pub const BOID_COLOUR: Color = Color::WHITE;
-pub const BOID_SPIN_SPEED: f32 = 6.0;
-pub const BOID_SLIDE_SPEED: f32 = 10.0;
+pub const BOID_SPEED: f32 = 20.0;
+pub const BOID_ACCELERATION_RATE: f32 = 3.0;
+pub const BOID_VISION_RANGE: f32 = 40.0;
+pub const BOID_PERSONAL_SPACE: f32 = 8.0;
 
-pub const BOUNDS_WIDTH_X: f32 = 50.0;
-pub const BOUNDS_WIDTH_Y: f32 = 50.0;
-pub const BOUNDS_WIDTH_Z: f32 = 50.0;
+pub const SEPARATION_WEIGHTING: f32 = 1.0;
+pub const ALLIGNMENT_WEIGHTING: f32 = 1.0;
+pub const COHESION_WEIGHTING:   f32 = 1.0;
+
+pub const BOUNDS_WIDTH_X: f32 = 100.0;
+pub const BOUNDS_WIDTH_Y: f32 = 100.0;
+pub const BOUNDS_WIDTH_Z: f32 = 100.0;
 
 ////////////////////////////////////////////////////////////////
 // Components
 ////////////////////////////////////////////////////////////////
-#[derive(Reflect, Component, Default)]
-#[reflect(Component)]
-struct Boid {
+#[derive(Component)]
+struct Boid;
+
+#[derive(Component)]
+struct Velocity {
+    magnitude: f32,
+    direction: Vec3,
+}
+
+#[derive(Component)]
+struct Acceleration {
+    magnitude: f32,
     direction: Vec3,
 }
 
@@ -48,13 +63,13 @@ fn main() {
         })
     )
     .add_plugin(FlyCameraPlugin)
-    .register_type::<Boid>()
     .add_startup_system(spawn_camera)
     .add_startup_system(set_light_level)
     .add_startup_system(spawn_boid)
-    .add_system(boids_turn)
     .add_system(boids_move)
     .add_system(boids_edge_reflect)
+    .add_system(boids_calculate_acceleration)
+    .add_system(boids_accelerate)
     .run();
 }
 
@@ -74,7 +89,7 @@ fn set_light_level(
 ) {
     commands.insert_resource(AmbientLight {
         color: Color::WHITE,
-        brightness: 0.75,
+        brightness: 1.0,
     });
 }
 
@@ -89,53 +104,112 @@ fn spawn_boid(
     for _ in 0..BOIDS_NUM {
         
         let mut rng = rand::thread_rng();
-        let x = Uniform::from(-0.5*BOUNDS_WIDTH_X..0.5*BOUNDS_WIDTH_X).sample(&mut rng);
-        let y = Uniform::from(-0.5*BOUNDS_WIDTH_Y..0.5*BOUNDS_WIDTH_Y).sample(&mut rng);
-        let z = Uniform::from(-0.5*BOUNDS_WIDTH_Z..0.5*BOUNDS_WIDTH_Z).sample(&mut rng);
+        
+        let x_pos = Uniform::from(-0.5*BOUNDS_WIDTH_X..0.5*BOUNDS_WIDTH_X).sample(&mut rng);
+        let y_pos = Uniform::from(-0.5*BOUNDS_WIDTH_Y..0.5*BOUNDS_WIDTH_Y).sample(&mut rng);
+        let z_pos = Uniform::from(-0.5*BOUNDS_WIDTH_Z..0.5*BOUNDS_WIDTH_Z).sample(&mut rng);
+        
+        let x_dir = Uniform::from(-0.5*BOUNDS_WIDTH_X..0.5*BOUNDS_WIDTH_X).sample(&mut rng);
+        let y_dir = Uniform::from(-0.5*BOUNDS_WIDTH_Y..0.5*BOUNDS_WIDTH_Y).sample(&mut rng);
+        let z_dir = Uniform::from(-0.5*BOUNDS_WIDTH_Z..0.5*BOUNDS_WIDTH_Z).sample(&mut rng);
+        let mut direction: Vec3 = Vec3 {x: x_dir, y: y_dir, z: z_dir};
+        direction = direction.normalize();
 
         commands.spawn(PbrBundle {
                 mesh: meshes.add(boid_mesh.clone()),
                 material: materials.add(BOID_COLOUR.into()),
-                transform: Transform::from_xyz(x, y, z),
+                transform: Transform::from_xyz(x_pos, y_pos, z_pos),
                 ..default()
             }
         )
-        .insert(Boid {direction: Vec3 {x: 0.0, y: 1.0, z: 0.0}});
+        .insert(Boid)
+        .insert(Velocity {magnitude: BOID_SPEED, direction})
+        .insert(Acceleration {magnitude: BOID_ACCELERATION_RATE, direction: Vec3::ZERO});
     }
 }
 
-fn boids_turn(
-    time: Res<Time>,
-    mut boids: Query<(&mut Boid, &mut Transform)>,
+fn boids_calculate_acceleration(
+    mut boids: Query<(Entity, &mut Acceleration, &Transform), With<Boid>>,
+    other_boids: Query<(Entity, &Velocity, &Transform), With<Boid>>,
 ) {
-    for (mut boid, mut transform) in boids.iter_mut() {
-
-        // Placeholder
-        // TODO: Define an acceleration function
-        let acceleration: Vec3 = Vec3 {
-            x:  boid.direction.y, 
-            y: -boid.direction.x, 
-            z:  0.0
-        };
+    for (this_entity, mut acceleration, transform) in boids.iter_mut() {
         
-        boid.direction.x += BOID_SPIN_SPEED*acceleration.x*time.delta_seconds();
-        boid.direction.y += BOID_SPIN_SPEED*acceleration.y*time.delta_seconds();
-        boid.direction.z += BOID_SPIN_SPEED*acceleration.z*time.delta_seconds();
+        // Tracking vectors
+        let mut avoid_positions: Vec<Vec3> = Vec::new();
+        let mut local_headings: Vec<Vec3> = Vec::new();
+        let mut local_positions: Vec<Vec3> = Vec::new();
 
-        boid.direction = boid.direction.normalize();
+        // Iterate over other boids
+        for (other_entity, other_velocity, other_transform) in other_boids.iter() {
+            if other_entity == this_entity {continue}
+            let distance: f32 = transform.translation.distance(other_transform.translation);
+            if distance < BOID_PERSONAL_SPACE {
+                avoid_positions.push(other_transform.translation);
+            }
+            if distance > BOID_PERSONAL_SPACE && distance < BOID_VISION_RANGE {
+                local_headings.push(other_velocity.direction);
+                local_positions.push(other_transform.translation);
+            }
+        }
 
-        transform.look_to(boid.direction, Vec3::Y);  // REVISIT: Think about how up is defined
+        // Calculate separation direction
+        let avoids: usize = avoid_positions.len();
+        let mut avoid_average_pos: Vec3 = transform.translation;
+        for pos in avoid_positions.into_iter() {
+            avoid_average_pos += pos 
+        }
+        avoid_average_pos = avoid_average_pos / (avoids as f32);
+        let separation: Vec3 = (avoids as f32) * (transform.translation - avoid_average_pos).normalize_or_zero();
+
+        // Calculate allignment direction
+        let locals: usize = local_headings.len();
+        let mut allignment: Vec3 = Vec3::ZERO;
+        for dir in local_headings.into_iter() {
+            allignment += dir;
+        }
+        let allignment: Vec3 = (allignment / (locals as f32)).normalize_or_zero();
+
+        // Calculate cohesion direction
+        let locals: usize = local_positions.len();
+        let mut local_average_pos: Vec3 = transform.translation;
+        for pos in local_positions.into_iter() {
+            local_average_pos += pos;
+        }
+        local_average_pos = local_average_pos / (locals as f32);
+        let cohesion: Vec3 = (local_average_pos - transform.translation).normalize_or_zero();
+
+        // Combine directions
+        acceleration.direction = SEPARATION_WEIGHTING*separation 
+                               + ALLIGNMENT_WEIGHTING*allignment
+                               + COHESION_WEIGHTING*cohesion;
+        acceleration.direction = acceleration.direction.normalize_or_zero();
+    }
+}
+
+fn boids_accelerate(
+    time: Res<Time>,
+    mut boids: Query<(&mut Velocity, &Acceleration, &mut Transform), With<Boid>>,
+) {
+    for (mut velocity, acceleration, mut transform) in boids.iter_mut() {
+        
+        velocity.direction.x += acceleration.magnitude*acceleration.direction.x*time.delta_seconds();
+        velocity.direction.y += acceleration.magnitude*acceleration.direction.y*time.delta_seconds();
+        velocity.direction.z += acceleration.magnitude*acceleration.direction.z*time.delta_seconds();
+
+        velocity.direction = velocity.direction.normalize();
+
+        transform.look_to(velocity.direction, Vec3::Y);  // REVISIT: Think about how up is defined
     }
 }
 
 fn boids_move(
     time: Res<Time>,
-    mut boids: Query<(&Boid, &mut Transform)>,
+    mut boids: Query<(&Velocity, &mut Transform), With<Boid>>,
 ) {
-    for (boid, mut transform) in boids.iter_mut() {
-        transform.translation.x += boid.direction.x*BOID_SLIDE_SPEED*time.delta_seconds();
-        transform.translation.y += boid.direction.y*BOID_SLIDE_SPEED*time.delta_seconds();
-        transform.translation.z += boid.direction.z*BOID_SLIDE_SPEED*time.delta_seconds();
+    for (velocity, mut transform) in boids.iter_mut() {
+        transform.translation.x += velocity.magnitude*velocity.direction.x*time.delta_seconds();
+        transform.translation.y += velocity.magnitude*velocity.direction.y*time.delta_seconds();
+        transform.translation.z += velocity.magnitude*velocity.direction.z*time.delta_seconds();
     }
 }
 
