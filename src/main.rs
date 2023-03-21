@@ -11,21 +11,21 @@ pub const WINDOW_WIDTH: f32 = WINDOW_HEIGHT*ASPECT_RATIO;
 
 pub const SKY_COLOUR: Color = Color::rgb(0.2, 0.2, 0.2);
 
-pub const BOIDS_NUM: i32 = 1000;
+pub const BOIDS_NUM: i32 = 200;
 
 pub const BOID_COLOUR: Color = Color::WHITE;
-pub const BOID_SPEED: f32 = 20.0;
+pub const BOID_SPEED: f32 = 5.0;
 pub const BOID_ACCELERATION_RATE: f32 = 3.0;
-pub const BOID_VISION_RANGE: f32 = 40.0;
-pub const BOID_PERSONAL_SPACE: f32 = 8.0;
+pub const BOID_VISION_RANGE: f32 = 4.0;
+pub const BOID_PERSONAL_SPACE: f32 = 0.5;
 
-pub const SEPARATION_WEIGHTING: f32 = 1.0;
-pub const ALLIGNMENT_WEIGHTING: f32 = 1.0;
-pub const COHESION_WEIGHTING:   f32 = 1.0;
+pub const SEPARATION_WEIGHTING: f32 = 10.0;
+pub const ALLIGNMENT_WEIGHTING: f32 = 10.0;
+pub const COHESION_WEIGHTING:   f32 = 2.0;
 
-pub const BOUNDS_WIDTH_X: f32 = 100.0;
-pub const BOUNDS_WIDTH_Y: f32 = 100.0;
-pub const BOUNDS_WIDTH_Z: f32 = 100.0;
+pub const BOUNDS_WIDTH_X: f32 = 30.0;
+pub const BOUNDS_WIDTH_Y: f32 = 30.0;
+pub const BOUNDS_WIDTH_Z: f32 = 30.0;
 
 ////////////////////////////////////////////////////////////////
 // Components
