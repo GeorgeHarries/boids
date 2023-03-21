@@ -191,13 +191,8 @@ fn boids_accelerate(
     mut boids: Query<(&mut Velocity, &Acceleration, &mut Transform), With<Boid>>,
 ) {
     for (mut velocity, acceleration, mut transform) in boids.iter_mut() {
-        
-        velocity.direction.x += acceleration.magnitude*acceleration.direction.x*time.delta_seconds();
-        velocity.direction.y += acceleration.magnitude*acceleration.direction.y*time.delta_seconds();
-        velocity.direction.z += acceleration.magnitude*acceleration.direction.z*time.delta_seconds();
-
+        velocity.direction += acceleration.magnitude*acceleration.direction*time.delta_seconds();
         velocity.direction = velocity.direction.normalize();
-
         transform.look_to(velocity.direction, Vec3::Y);  // REVISIT: Think about how up is defined
     }
 }
@@ -207,9 +202,7 @@ fn boids_move(
     mut boids: Query<(&Velocity, &mut Transform), With<Boid>>,
 ) {
     for (velocity, mut transform) in boids.iter_mut() {
-        transform.translation.x += velocity.magnitude*velocity.direction.x*time.delta_seconds();
-        transform.translation.y += velocity.magnitude*velocity.direction.y*time.delta_seconds();
-        transform.translation.z += velocity.magnitude*velocity.direction.z*time.delta_seconds();
+        transform.translation += velocity.magnitude*velocity.direction*time.delta_seconds();
     }
 }
 
