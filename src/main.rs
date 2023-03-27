@@ -15,19 +15,19 @@ pub const SKY_COLOUR: Color           = Color::rgb(0.2, 0.2, 0.2);
 // Boid constants
 pub const BOID_NUM: i32               = 200;
 pub const BOID_COLOUR: Color          = Color::WHITE;
-pub const BOID_SPEED: f32             = 5.0;
-pub const BOID_ACCELERATION_RATE: f32 = 3.0;
-pub const BOID_VISION_RANGE: f32      = 4.0;
-pub const BOID_PERSONAL_SPACE: f32    = 0.5;
+pub const BOID_MAX_SPEED: f32         = 10.0;
+pub const BOID_ACCELERATION_RATE: f32 = 10.0;
+pub const BOID_VISION_RANGE: f32      = 8.0;
+pub const BOID_PERSONAL_SPACE: f32    = 1.0;
 
 pub const SEPARATION_WEIGHTING: f32   = 10.0;
-pub const ALLIGNMENT_WEIGHTING: f32   = 10.0;
-pub const COHESION_WEIGHTING: f32     = 2.0;
-pub const BOUND_WEIGHTING: f32        = 1.0;
+pub const ALLIGNMENT_WEIGHTING: f32   = 20.0;
+pub const COHESION_WEIGHTING: f32     = 10.0;
+pub const BOUND_WEIGHTING: f32        = 15.0;
 
-pub const BOUNDS_WIDTH_X: f32         = 30.0;
-pub const BOUNDS_WIDTH_Y: f32         = 30.0;
-pub const BOUNDS_WIDTH_Z: f32         = 30.0;
+pub const BOUNDS_WIDTH_X: f32         = 40.0;
+pub const BOUNDS_WIDTH_Y: f32         = 40.0;
+pub const BOUNDS_WIDTH_Z: f32         = 40.0;
 
 ////////////////////////////////////////////////////////////////
 // Components
@@ -37,8 +37,7 @@ struct Boid;
 
 #[derive(Component)]
 struct Velocity {
-    magnitude: f32,
-    direction: Vec3,
+    vector: Vec3,
 }
 
 #[derive(Component)]
@@ -126,7 +125,7 @@ fn spawn_boid(
             }
         )
         .insert(Boid)
-        .insert(Velocity {magnitude: BOID_SPEED, direction})
+        .insert(Velocity {vector: direction})
         .insert(Acceleration {magnitude: BOID_ACCELERATION_RATE, direction: Vec3::ZERO});
     }
 }
@@ -150,7 +149,7 @@ fn boids_calculate_acceleration(
                 avoid_positions.push(other_transform.translation);
             }
             if distance > BOID_PERSONAL_SPACE && distance < BOID_VISION_RANGE {
-                local_headings.push(other_velocity.direction);
+                local_headings.push(other_velocity.vector.normalize_or_zero());
                 local_positions.push(other_transform.translation);
             }
         }
@@ -204,9 +203,9 @@ fn boids_accelerate(
     mut boids: Query<(&mut Velocity, &Acceleration, &mut Transform), With<Boid>>,
 ) {
     for (mut velocity, acceleration, mut transform) in boids.iter_mut() {
-        velocity.direction += acceleration.magnitude*acceleration.direction*time.delta_seconds();
-        velocity.direction = velocity.direction.normalize();
-        transform.look_to(velocity.direction, Vec3::Y);  // REVISIT: Think about how up is defined
+        velocity.vector += acceleration.magnitude*acceleration.direction*time.delta_seconds();
+        velocity.vector = velocity.vector.clamp_length_max(BOID_MAX_SPEED);
+        transform.look_to(velocity.vector, Vec3::Y);  // REVISIT: Think about how up is defined
     }
 }
 
@@ -215,7 +214,7 @@ fn boids_move(
     mut boids: Query<(&Velocity, &mut Transform), With<Boid>>,
 ) {
     for (velocity, mut transform) in boids.iter_mut() {
-        transform.translation += velocity.magnitude*velocity.direction*time.delta_seconds();
+        transform.translation += velocity.vector*time.delta_seconds();
     }
 }
 
