@@ -5,28 +5,29 @@ use bevy::render::mesh::{self, PrimitiveTopology};
 use rand::distributions::{Distribution, Uniform};
 
 // Window constants
-pub const ASPECT_RATIO: f32 = 16.0/9.0;
-pub const WINDOW_HEIGHT: f32 =  720.0;
-pub const WINDOW_WIDTH: f32 = WINDOW_HEIGHT*ASPECT_RATIO;
+pub const ASPECT_RATIO: f32           = 16.0/9.0;
+pub const WINDOW_HEIGHT: f32          =  720.0;
+pub const WINDOW_WIDTH: f32           = WINDOW_HEIGHT*ASPECT_RATIO;
 
-pub const SKY_COLOUR: Color = Color::rgb(0.2, 0.2, 0.2);
+// World constants
+pub const SKY_COLOUR: Color           = Color::rgb(0.2, 0.2, 0.2);
 
-pub const BOIDS_NUM: i32 = 200;
-
-pub const BOID_COLOUR: Color = Color::WHITE;
-pub const BOID_SPEED: f32 = 5.0;
+// Boid constants
+pub const BOID_NUM: i32               = 200;
+pub const BOID_COLOUR: Color          = Color::WHITE;
+pub const BOID_SPEED: f32             = 5.0;
 pub const BOID_ACCELERATION_RATE: f32 = 3.0;
-pub const BOID_SOFT_BOUND_ACCELERATION_RATE: f32 = 3.0;
-pub const BOID_VISION_RANGE: f32 = 4.0;
-pub const BOID_PERSONAL_SPACE: f32 = 0.5;
+pub const BOID_VISION_RANGE: f32      = 4.0;
+pub const BOID_PERSONAL_SPACE: f32    = 0.5;
 
-pub const SEPARATION_WEIGHTING: f32 = 10.0;
-pub const ALLIGNMENT_WEIGHTING: f32 = 10.0;
-pub const COHESION_WEIGHTING:   f32 = 2.0;
+pub const SEPARATION_WEIGHTING: f32   = 10.0;
+pub const ALLIGNMENT_WEIGHTING: f32   = 10.0;
+pub const COHESION_WEIGHTING: f32     = 2.0;
+pub const BOUND_WEIGHTING: f32        = 1.0;
 
-pub const BOUNDS_WIDTH_X: f32 = 30.0;
-pub const BOUNDS_WIDTH_Y: f32 = 30.0;
-pub const BOUNDS_WIDTH_Z: f32 = 30.0;
+pub const BOUNDS_WIDTH_X: f32         = 30.0;
+pub const BOUNDS_WIDTH_Y: f32         = 30.0;
+pub const BOUNDS_WIDTH_Z: f32         = 30.0;
 
 ////////////////////////////////////////////////////////////////
 // Components
@@ -69,11 +70,9 @@ fn main() {
     .add_startup_system(spawn_boid)
     .add_systems((
         boids_calculate_acceleration,
-        boids_edge_soft_bound,
         boids_accelerate,
         boids_move
     ).chain())
-    // .add_system(boids_edge_reflect)
     .run();
 }
 
@@ -105,7 +104,7 @@ fn spawn_boid(
     
     let boid_mesh: Mesh = get_boid_mesh();
     
-    for _ in 0..BOIDS_NUM {
+    for _ in 0..BOID_NUM {
         
         let mut rng = rand::thread_rng();
         
@@ -182,10 +181,20 @@ fn boids_calculate_acceleration(
         local_average_pos = local_average_pos / (locals as f32);
         let cohesion: Vec3 = (local_average_pos - transform.translation).normalize_or_zero();
 
+        let mut bound: Vec3 = Vec3::ZERO;
+        if transform.translation.x >=  0.5*BOUNDS_WIDTH_X {bound.x -= BOID_ACCELERATION_RATE}
+        if transform.translation.x <= -0.5*BOUNDS_WIDTH_X {bound.x += BOID_ACCELERATION_RATE}
+        if transform.translation.y >=  0.5*BOUNDS_WIDTH_Y {bound.y -= BOID_ACCELERATION_RATE}
+        if transform.translation.y <= -0.5*BOUNDS_WIDTH_Y {bound.y += BOID_ACCELERATION_RATE}
+        if transform.translation.z >=  0.5*BOUNDS_WIDTH_Z {bound.z -= BOID_ACCELERATION_RATE}
+        if transform.translation.z <= -0.5*BOUNDS_WIDTH_Z {bound.z += BOID_ACCELERATION_RATE}
+        let bound: Vec3 = bound;
+
         // Combine directions
         acceleration.direction = SEPARATION_WEIGHTING*separation 
                                + ALLIGNMENT_WEIGHTING*allignment
-                               + COHESION_WEIGHTING*cohesion;
+                               + COHESION_WEIGHTING*cohesion
+                               + BOUND_WEIGHTING*bound;
         acceleration.direction = acceleration.direction.normalize_or_zero();
     }
 }
@@ -210,32 +219,6 @@ fn boids_move(
     }
 }
 
-fn boids_edge_reflect(
-    mut boids: Query<&mut Transform, With<Boid>>,
-) {
-    for mut transform in boids.iter_mut() {
-        if transform.translation.x >=  0.5*BOUNDS_WIDTH_X {transform.translation.x -= BOUNDS_WIDTH_X}
-        if transform.translation.x <= -0.5*BOUNDS_WIDTH_X {transform.translation.x += BOUNDS_WIDTH_X}
-        if transform.translation.y >=  0.5*BOUNDS_WIDTH_Y {transform.translation.y -= BOUNDS_WIDTH_Y}
-        if transform.translation.y <= -0.5*BOUNDS_WIDTH_Y {transform.translation.y += BOUNDS_WIDTH_Y}
-        if transform.translation.z >=  0.5*BOUNDS_WIDTH_Z {transform.translation.z -= BOUNDS_WIDTH_Z}
-        if transform.translation.z <= -0.5*BOUNDS_WIDTH_Z {transform.translation.z += BOUNDS_WIDTH_Z}
-    }
-}
-
-fn boids_edge_soft_bound(
-    mut boids: Query<(&Transform, &mut Acceleration), With<Boid>>,
-) {
-    for (transform, mut acceleration) in boids.iter_mut() {
-        if transform.translation.x >=  0.5*BOUNDS_WIDTH_X {acceleration.direction.x -= BOID_SOFT_BOUND_ACCELERATION_RATE}
-        if transform.translation.x <= -0.5*BOUNDS_WIDTH_X {acceleration.direction.x += BOID_SOFT_BOUND_ACCELERATION_RATE}
-        if transform.translation.y >=  0.5*BOUNDS_WIDTH_Y {acceleration.direction.y -= BOID_SOFT_BOUND_ACCELERATION_RATE}
-        if transform.translation.y <= -0.5*BOUNDS_WIDTH_Y {acceleration.direction.y += BOID_SOFT_BOUND_ACCELERATION_RATE}
-        if transform.translation.z >=  0.5*BOUNDS_WIDTH_Z {acceleration.direction.z -= BOID_SOFT_BOUND_ACCELERATION_RATE}
-        if transform.translation.z <= -0.5*BOUNDS_WIDTH_Z {acceleration.direction.z += BOID_SOFT_BOUND_ACCELERATION_RATE}
-        acceleration.direction = acceleration.direction.normalize_or_zero();
-    }
-}
 ////////////////////////////////////////////////////////////////
 // Helper functions
 ////////////////////////////////////////////////////////////////
