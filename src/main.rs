@@ -13,10 +13,10 @@ pub const WINDOW_WIDTH: f32           = WINDOW_HEIGHT*ASPECT_RATIO;
 pub const SKY_COLOUR: Color           = Color::rgb(0.2, 0.2, 0.2);
 
 // Boid constants
-pub const BOID_NUM: i32               = 200;
+pub const BOID_NUM: i32               = 300;
 pub const BOID_COLOUR: Color          = Color::WHITE;
 pub const BOID_MAX_SPEED: f32         = 10.0;
-pub const BOID_ACCELERATION_RATE: f32 = 10.0;
+pub const BOID_MAX_ACCELERATION: f32  = 10.0;
 pub const BOID_VISION_RANGE: f32      = 8.0;
 pub const BOID_PERSONAL_SPACE: f32    = 1.0;
 
@@ -42,8 +42,7 @@ struct Velocity {
 
 #[derive(Component)]
 struct Acceleration {
-    magnitude: f32,
-    direction: Vec3,
+    vector: Vec3,
 }
 
 ////////////////////////////////////////////////////////////////
@@ -126,7 +125,7 @@ fn spawn_boid(
         )
         .insert(Boid)
         .insert(Velocity {vector: direction})
-        .insert(Acceleration {magnitude: BOID_ACCELERATION_RATE, direction: Vec3::ZERO});
+        .insert(Acceleration {vector: Vec3::ZERO});
     }
 }
 
@@ -181,20 +180,20 @@ fn boids_calculate_acceleration(
         let cohesion: Vec3 = (local_average_pos - transform.translation).normalize_or_zero();
 
         let mut bound: Vec3 = Vec3::ZERO;
-        if transform.translation.x >=  0.5*BOUNDS_WIDTH_X {bound.x -= BOID_ACCELERATION_RATE}
-        if transform.translation.x <= -0.5*BOUNDS_WIDTH_X {bound.x += BOID_ACCELERATION_RATE}
-        if transform.translation.y >=  0.5*BOUNDS_WIDTH_Y {bound.y -= BOID_ACCELERATION_RATE}
-        if transform.translation.y <= -0.5*BOUNDS_WIDTH_Y {bound.y += BOID_ACCELERATION_RATE}
-        if transform.translation.z >=  0.5*BOUNDS_WIDTH_Z {bound.z -= BOID_ACCELERATION_RATE}
-        if transform.translation.z <= -0.5*BOUNDS_WIDTH_Z {bound.z += BOID_ACCELERATION_RATE}
+        if transform.translation.x >=  0.5*BOUNDS_WIDTH_X {bound.x -= 1.0}
+        if transform.translation.x <= -0.5*BOUNDS_WIDTH_X {bound.x += 1.0}
+        if transform.translation.y >=  0.5*BOUNDS_WIDTH_Y {bound.y -= 1.0}
+        if transform.translation.y <= -0.5*BOUNDS_WIDTH_Y {bound.y += 1.0}
+        if transform.translation.z >=  0.5*BOUNDS_WIDTH_Z {bound.z -= 1.0}
+        if transform.translation.z <= -0.5*BOUNDS_WIDTH_Z {bound.z += 1.0}
         let bound: Vec3 = bound;
 
         // Combine directions
-        acceleration.direction = SEPARATION_WEIGHTING*separation 
+        acceleration.vector = SEPARATION_WEIGHTING*separation 
                                + ALLIGNMENT_WEIGHTING*allignment
                                + COHESION_WEIGHTING*cohesion
                                + BOUND_WEIGHTING*bound;
-        acceleration.direction = acceleration.direction.normalize_or_zero();
+        acceleration.vector = acceleration.vector.clamp_length_max(BOID_MAX_ACCELERATION);
     }
 }
 
@@ -203,7 +202,7 @@ fn boids_accelerate(
     mut boids: Query<(&mut Velocity, &Acceleration, &mut Transform), With<Boid>>,
 ) {
     for (mut velocity, acceleration, mut transform) in boids.iter_mut() {
-        velocity.vector += acceleration.magnitude*acceleration.direction*time.delta_seconds();
+        velocity.vector += acceleration.vector*time.delta_seconds();
         velocity.vector = velocity.vector.clamp_length_max(BOID_MAX_SPEED);
         transform.look_to(velocity.vector, Vec3::Y);  // REVISIT: Think about how up is defined
     }
