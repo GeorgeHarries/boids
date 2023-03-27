@@ -6,7 +6,7 @@ use rand::distributions::{Distribution, Uniform};
 
 // Window constants
 pub const ASPECT_RATIO: f32           = 16.0/9.0;
-pub const WINDOW_HEIGHT: f32          =  720.0;
+pub const WINDOW_HEIGHT: f32          = 720.0;
 pub const WINDOW_WIDTH: f32           = WINDOW_HEIGHT*ASPECT_RATIO;
 
 // World constants
@@ -15,15 +15,16 @@ pub const SKY_COLOUR: Color           = Color::rgb(0.2, 0.2, 0.2);
 // Boid constants
 pub const BOID_NUM: i32               = 300;
 pub const BOID_COLOUR: Color          = Color::WHITE;
-pub const BOID_MAX_SPEED: f32         = 10.0;
+pub const BOID_SPEED_SOFT_CAP: f32    = 6.0;
 pub const BOID_MAX_ACCELERATION: f32  = 10.0;
-pub const BOID_VISION_RANGE: f32      = 8.0;
-pub const BOID_PERSONAL_SPACE: f32    = 1.0;
+pub const BOID_VISION_RANGE: f32      = 5.0;
+pub const BOID_PERSONAL_SPACE: f32    = 0.5;
 
 pub const SEPARATION_WEIGHTING: f32   = 10.0;
 pub const ALLIGNMENT_WEIGHTING: f32   = 20.0;
-pub const COHESION_WEIGHTING: f32     = 10.0;
+pub const COHESION_WEIGHTING: f32     = 2.0;
 pub const BOUND_WEIGHTING: f32        = 15.0;
+pub const DRAG_WEIGHTING: f32         = 10.0;
 
 pub const BOUNDS_WIDTH_X: f32         = 40.0;
 pub const BOUNDS_WIDTH_Y: f32         = 40.0;
@@ -130,10 +131,10 @@ fn spawn_boid(
 }
 
 fn boids_calculate_acceleration(
-    mut boids: Query<(Entity, &mut Acceleration, &Transform), With<Boid>>,
+    mut boids: Query<(Entity, &mut Acceleration, &Velocity, &Transform), With<Boid>>,
     other_boids: Query<(Entity, &Velocity, &Transform), With<Boid>>,
 ) {
-    for (this_entity, mut acceleration, transform) in boids.iter_mut() {
+    for (this_entity, mut acceleration, velocity, transform) in boids.iter_mut() {
         
         // Tracking vectors
         let mut avoid_positions: Vec<Vec3> = Vec::new();
@@ -179,6 +180,14 @@ fn boids_calculate_acceleration(
         local_average_pos = local_average_pos / (locals as f32);
         let cohesion: Vec3 = (local_average_pos - transform.translation).normalize_or_zero();
 
+        // Calculate drag direction
+        let mut drag: Vec3 = Vec3::ZERO;
+        if velocity.vector.length() > BOID_SPEED_SOFT_CAP {
+            drag = (BOID_SPEED_SOFT_CAP-velocity.vector.length())*velocity.vector.normalize_or_zero();
+        }
+        let drag: Vec3 = drag;
+
+        // Calculate bounding force direction
         let mut bound: Vec3 = Vec3::ZERO;
         if transform.translation.x >=  0.5*BOUNDS_WIDTH_X {bound.x -= 1.0}
         if transform.translation.x <= -0.5*BOUNDS_WIDTH_X {bound.x += 1.0}
@@ -192,7 +201,8 @@ fn boids_calculate_acceleration(
         acceleration.vector = SEPARATION_WEIGHTING*separation 
                                + ALLIGNMENT_WEIGHTING*allignment
                                + COHESION_WEIGHTING*cohesion
-                               + BOUND_WEIGHTING*bound;
+                               + BOUND_WEIGHTING*bound
+                               + DRAG_WEIGHTING*drag;
         acceleration.vector = acceleration.vector.clamp_length_max(BOID_MAX_ACCELERATION);
     }
 }
@@ -203,7 +213,6 @@ fn boids_accelerate(
 ) {
     for (mut velocity, acceleration, mut transform) in boids.iter_mut() {
         velocity.vector += acceleration.vector*time.delta_seconds();
-        velocity.vector = velocity.vector.clamp_length_max(BOID_MAX_SPEED);
         transform.look_to(velocity.vector, Vec3::Y);  // REVISIT: Think about how up is defined
     }
 }
