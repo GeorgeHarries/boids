@@ -158,7 +158,7 @@ fn boids_calculate_acceleration(
         let avoids: usize = avoid_positions.len();
         let mut avoid_average_pos: Vec3 = transform.translation;
         for pos in avoid_positions.into_iter() {
-            avoid_average_pos += pos 
+            avoid_average_pos += pos;
         }
         avoid_average_pos = avoid_average_pos / (avoids as f32);
         let separation: Vec3 = (avoids as f32) * (transform.translation - avoid_average_pos).normalize_or_zero();
